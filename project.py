@@ -73,21 +73,26 @@ def plot_graph():
     bars = ax.bar(labels, values, color=['green', 'red'])
     
     def on_hover(event):
-        for bar, names, label in zip(bars, [names_checked, names_unchecked], labels):
-            contains, _ = bar.contains(event) 
-            if contains:
-                bar.set_facecolor('orange') 
-                if label == '선택됨':
-                    plt.title(f'{label} - {", ".join(names_checked)}')
-                else:
-                    plt.title(f'{label} - {", ".join(names_unchecked)}') 
-            else:
-                if label == '선택됨':
-                    bar.set_facecolor('green')
-                else:
-                    bar.set_facecolor('red')
-                plt.title('체크박스 상태에 따른 인원 수') 
-            fig.canvas.draw_idle()
+      title_updated = False  # 제목이 업데이트되었는지 여부 확인
+      
+      for bar, names, label in zip(bars, [names_checked, names_unchecked], labels):
+          contains, _ = bar.contains(event)
+          if contains:
+              bar.set_facecolor('orange')
+              if label == '선택됨':
+                  plt.title(f'{label} - {", ".join(names_checked)}')
+              else:
+                  plt.title(f'{label} - {", ".join(names_unchecked)}')
+              title_updated = True
+              break  # 막대를 찾았으므로 더 이상 검사할 필요 없음
+          else:
+              bar.set_facecolor('green' if label == '선택됨' else 'red')
+      
+      if not title_updated:
+          plt.title('체크박스 상태에 따른 인원 수')
+          
+      fig.canvas.draw_idle()
+
 
 
 

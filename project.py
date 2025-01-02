@@ -2,9 +2,10 @@ import tkinter as tk
 from tkinter import messagebox
 from openpyxl import Workbook, load_workbook
 import os
+import matplotlib.pyplot as plt
 
 root = tk.Tk()
-root.title("excel 저장 테스트")
+root.title("엑셀 저장 테스트")
 root.geometry("500x400")
 root.config(bg="#f0f0f0")
 
@@ -36,6 +37,39 @@ def save_to_excel():
     ws.append([name, slider_value, check_status])
     wb.save(file_name)
     messagebox.showinfo("저장 완료", f"{file_name}에 데이터가 저장되었습니다!")
+    plot_graph() 
+
+def plot_graph():
+    file_name = "user_data.xlsx"
+    
+    if not os.path.exists(file_name):
+        messagebox.showerror("오류", f"{file_name} 파일이 없습니다!")
+        return
+
+    wb = load_workbook(file_name)
+    ws = wb.active
+    
+    checked_count = 0
+    unchecked_count = 0
+
+    for row in ws.iter_rows(min_row=2, values_only=True):
+        name, slider_value, check_status = row
+        if check_status == "선택됨":
+            checked_count += 1
+        else:
+            unchecked_count += 1
+
+    labels = ['체크됨', '체크 안 됨']
+    values = [checked_count, unchecked_count]
+
+    plt.rcParams['font.family'] = 'Malgun Gothic'
+    
+    plt.figure(figsize=(6, 6))
+    plt.bar(labels, values, color=['green', 'red'])
+    plt.xlabel('체크박스 상태')
+    plt.ylabel('인원 수')
+    plt.title('체크박스 상태에 따른 인원 수')
+    plt.show()
 
 label = tk.Label(root, text="안녕하세요!", font=("Helvetica", 16, "bold"), fg="blue", bg="#f0f0f0")
 label.pack(pady=20)

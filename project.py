@@ -3,6 +3,7 @@ from tkinter import messagebox
 from openpyxl import Workbook, load_workbook
 import os
 import matplotlib.pyplot as plt
+from matplotlib.widgets import Cursor
 
 root = tk.Tk()
 root.title("엑셀 저장 테스트")
@@ -51,24 +52,49 @@ def plot_graph():
     
     checked_count = 0
     unchecked_count = 0
+    names_checked = []
+    names_unchecked = []
 
     for row in ws.iter_rows(min_row=2, values_only=True):
         name, slider_value, check_status = row
         if check_status == "선택됨":
             checked_count += 1
+            names_checked.append(name)
         else:
             unchecked_count += 1
+            names_unchecked.append(name)
 
-    labels = ['체크됨', '체크 안 됨']
+    labels = ['선택됨', '선택 안 됨']
     values = [checked_count, unchecked_count]
 
     plt.rcParams['font.family'] = 'Malgun Gothic'
     
-    plt.figure(figsize=(6, 6))
-    plt.bar(labels, values, color=['green', 'red'])
-    plt.xlabel('체크박스 상태')
-    plt.ylabel('인원 수')
-    plt.title('체크박스 상태에 따른 인원 수')
+    fig, ax = plt.subplots(figsize=(6, 6))
+    bars = ax.bar(labels, values, color=['green', 'red'])
+    
+    def on_hover(event):
+        for bar, names, label in zip(bars, [names_checked, names_unchecked], labels):
+            contains, _ = bar.contains(event) 
+            if contains:
+                bar.set_facecolor('orange') 
+                if label == '선택됨':
+                    plt.title(f'{label} - {", ".join(names_checked)}')
+                else:
+                    plt.title(f'{label} - {", ".join(names_unchecked)}') 
+            else:
+                if label == '선택됨':
+                    bar.set_facecolor('green')
+                else:
+                    bar.set_facecolor('red')
+                plt.title('체크박스 상태에 따른 인원 수') 
+            fig.canvas.draw_idle()
+
+
+
+    fig.canvas.mpl_connect("motion_notify_event", on_hover)
+    
+    ax.set_xlabel('체크박스 상태')
+    ax.set_ylabel('인원 수')
     plt.show()
 
 label = tk.Label(root, text="안녕하세요!", font=("Helvetica", 16, "bold"), fg="blue", bg="#f0f0f0")

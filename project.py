@@ -4,6 +4,11 @@ from openpyxl.styles import PatternFill, Alignment, Font, Border, Side
 from tkinter import Tk, Toplevel, Label, Entry, Button, filedialog, Checkbutton, BooleanVar, Listbox, END, Frame
 from openpyxl.chart import BarChart, Reference
 import datetime
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+
+plt.rc('font', family='Malgun Gothic')  
+plt.rcParams['axes.unicode_minus'] = False 
 
 def select_file():
     """사용자 파일 선택"""
@@ -19,7 +24,7 @@ def get_sorting_order(departments, positions):
     """정렬 순서를 선택하거나 사용자 지정으로 입력받는 함수"""
     root = Toplevel()
     root.title("정렬 순서 선택")
-    root.geometry("500x500")  # 창 크기 설정
+    root.geometry("500x500") 
 
     use_custom_order = BooleanVar()
     use_custom_order.set(False)
@@ -27,11 +32,9 @@ def get_sorting_order(departments, positions):
     Label(root, text="정렬 방식을 선택하세요", font=("Arial", 14)).pack(pady=10)
     Checkbutton(root, text="사용자 지정 정렬", variable=use_custom_order).pack()
 
-    # 사용자 지정 정렬을 위한 프레임
     custom_order_frame = Frame(root)
     custom_order_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-    # 부서 순서
     Label(custom_order_frame, text="부서 순서").grid(row=0, column=0, padx=5, pady=5, sticky="w")
     department_listbox = Listbox(custom_order_frame, selectmode="extended", exportselection=False, height=10)
     for department in departments:
@@ -76,8 +79,8 @@ def get_sorting_order(departments, positions):
         if use_custom_order.get():
             custom_order["department"] = [department_listbox.get(i) for i in range(department_listbox.size())]
             custom_order["position"] = [position_listbox.get(i) for i in range(position_listbox.size())]
-        root.quit()  # mainloop 종료
-        root.destroy()  # 창 닫기
+        root.quit() 
+        root.destroy() 
 
     Button(root, text="확인", command=submit).pack(pady=10)
 
@@ -85,7 +88,7 @@ def get_sorting_order(departments, positions):
     return use_custom_order.get(), custom_order
 
 def get_quota_input(departments, positions):
-    """부서 및 직급별 정원을 한 화면에서 입력받는 함수"""
+    """부서 및 직급별 정원을 한 화면에서 입력받거나 파일에서 불러오는 기능 추가"""
     root = Toplevel()
     root.title("정원 입력")
 
@@ -110,18 +113,58 @@ def get_quota_input(departments, positions):
 
     detailed_quota = {}
 
+    def load_from_file():
+        """파일에서 정원을 불러오는 기능"""
+        file_path = filedialog.askopenfilename(
+            title="정원 파일 선택",
+            filetypes=[("Excel Files", "*.xls;*.xlsx")]
+        )
+        if not file_path:
+            return
+        try:
+            quota_df = pd.read_excel(file_path)
+            for department, position in entries.keys():
+                if (department, position) in quota_df.set_index(["부서", "직급"]).index:
+                    value = quota_df.loc[
+                        (quota_df["부서"] == department) & (quota_df["직급"] == position),
+                        "정원"
+                    ].values[0]
+                    entries[(department, position)].delete(0, END)
+                    entries[(department, position)].insert(0, str(value))
+        except Exception as e:
+            print(f"파일 로드 오류: {e}")
+
+    def save_to_excel():
+        """입력된 정원을 엑셀 파일로 저장"""
+        data = []
+        for (department, position), entry in entries.items():
+            value = entry.get()
+            data.append({
+                "부서": department,
+                "직급": position,
+                "정원": int(value) if value.isdigit() else 0
+            })
+        df = pd.DataFrame(data)
+        file_name = f"정원_입력_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+        df.to_excel(file_name, index=False)
+        print(f"정원 입력 내용이 저장되었습니다: {file_name}")
+
     def submit():
+        """정원 입력 완료"""
         nonlocal detailed_quota
         for (department, position), entry in entries.items():
             value = entry.get()
             if department not in detailed_quota:
                 detailed_quota[department] = {}
             detailed_quota[department][position] = int(value) if value.isdigit() else 0
+        save_to_excel()
         root.destroy()
 
-    Button(root, text="입력 완료", command=submit).grid(row=row, column=0, columnspan=3 + len(positions), pady=10)
+    Button(root, text="파일 선택", command=load_from_file).grid(row=row, column=0, columnspan=1, pady=10)
+    Button(root, text="입력 완료", command=submit).grid(row=row, column=1, columnspan=3 + len(positions), pady=10)
     root.wait_window()
     return detailed_quota
+
 
 def preprocess_data(input_df):
     """데이터 전처리"""
@@ -201,14 +244,19 @@ def traverse_hierarchy_and_count(hierarchy, input_df):
         }
     return updated_hierarchy
 
-def write_hierarchy_to_excel(ws, hierarchy, parent=None):
+def write_hierarchy_to_excel(ws, hierarchy, input_df, parent=None):
     """계층 구조 데이터를 엑셀에 기록"""
     for code, data in hierarchy.items():
         name = data["name"]
         current_count = data["현원"]
         sub_departments = data["sub_departments"]
-        ws.append([parent, name, current_count])
-        write_hierarchy_to_excel(ws, sub_departments, parent=name)
+
+        names = input_df[input_df["부서"].astype(str) == code]["한글명"].tolist()
+        
+        names_str = ", ".join(names) if names else " "
+
+        ws.append([parent, name, current_count, names_str])
+        write_hierarchy_to_excel(ws, sub_departments, input_df, parent=name)
 
 def create_excel_file(
     department_counts,
@@ -221,15 +269,14 @@ def create_excel_file(
     sub_department_counts,
     department_hierarchy,
     input_df,
-    department_order,  # 사용자 지정 부서 순서
-    position_order     # 사용자 지정 직급 순서
+    department_order,
+    position_order     
 ):
     """엑셀 파일 생성 및 데이터 기록"""
 
     for department, positions in detailed_quota.items():
         department_quota[department] = sum(positions.values())
 
-    # 직급별 총 정원 계산
     for position in position_order:
         position_quota[position] = sum(
             detailed_quota[department].get(position, 0) for department in detailed_quota
@@ -247,7 +294,7 @@ def create_excel_file(
     ws_main.append(["전체", "전체 정원", total_current, total_quota, total_surplus_deficit])
 
     ws_main.append(["부서별", None, None, None, None])
-    start_row = ws_main.max_row + 1  # 그래프 데이터의 시작 위치
+    start_row = ws_main.max_row + 1 
     for department, count in sorted(department_counts.items(), key=lambda x: department_order.index(x[0])):
         quota = department_quota.get(department, 0)
         surplus_deficit = count - quota
@@ -263,27 +310,42 @@ def create_excel_file(
     for department, allocation in detailed_quota.items():
         ws_main.append(["", department, None, None, None])
         for category, quota in allocation.items():
-            current_count = grouped_counts.get((department, category), 0)  # 부서-직급 현원 가져오기
+            current_count = grouped_counts.get((department, category), 0) 
             surplus_deficit = current_count - quota
             ws_main.append(["", f"  {category}", current_count, quota, surplus_deficit])
 
-    chart = BarChart()
-    chart.title = "부서별 현원 및 정원"
-    chart.x_axis.title = "부서"
-    chart.y_axis.title = "인원"
+    department_names = [dept for dept, _ in sorted(department_counts.items(), key=lambda x: department_order.index(x[0]))]
+    current_values = [department_counts[dept] for dept in department_names]
+    quota_values = [department_quota.get(dept, 0) for dept in department_names]
+    surplus_deficit = [current - quota for current, quota in zip(current_values, quota_values)] 
 
-    data = Reference(ws_main, min_col=3, max_col=4, min_row=start_row - 1, max_row=start_row + len(department_counts) - 1)
-    categories = Reference(ws_main, min_col=2, min_row=start_row, max_row=start_row + len(department_counts) - 1)
-    chart.add_data(data, titles_from_data=True)
-    chart.set_categories(categories)
+    plt.figure(figsize=(12, 8))
+    x = range(len(department_names))
+    width = 0.3 
 
-    ws_main.add_chart(chart, "G2")
+    bars_current = plt.bar(x, current_values, width=width, label="현원", align="center", color='skyblue')
+    bars_quota = plt.bar([i + width for i in x], quota_values, width=width, label="정원", align="center", color='lightgreen')
+    bars_surplus = plt.bar([i + 2 * width for i in x], surplus_deficit, width=width, label="과부족", align="center", color='salmon')
+
+    plt.xticks([i + width for i in x], department_names, rotation=45)
+
+    for bars, data in zip([bars_current, bars_quota, bars_surplus], [current_values, quota_values, surplus_deficit]):
+        for bar, value in zip(bars, data):
+            plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5, str(value), ha="center", va="bottom", fontsize=10)
+
+    plt.title("중구시설관리공단 인사 현황판", fontsize=16)
+    plt.xlabel("부서", fontsize=11)
+    plt.ylabel("인원", fontsize=11)
+    plt.legend(fontsize=11)
+    plt.tight_layout()
+
+    plt.show()
 
     ws_hierarchy = wb.create_sheet(title="부서 계층 구조")
-    ws_hierarchy.append(["상위 부서", "하위 부서", "현원"])
+    ws_hierarchy.append(["상위 부서", "하위 부서", "현원", "이름 목록"])
 
     updated_hierarchy = traverse_hierarchy_and_count(department_hierarchy, input_df)
-    write_hierarchy_to_excel(ws_hierarchy, updated_hierarchy)
+    write_hierarchy_to_excel(ws_hierarchy, updated_hierarchy, input_df)
 
     for ws in [ws_main, ws_hierarchy]:
         for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=5):
@@ -301,6 +363,7 @@ def create_excel_file(
     wb.save(file_name)
     print(f"엑셀 파일이 생성되었습니다: {file_name}")
 
+
 def main():
     file_path = select_file()
     if not file_path:
@@ -308,7 +371,7 @@ def main():
         return
 
     input_df = pd.read_excel(file_path)
-    print("원본 데이터 열:", input_df.columns)  # 원본 데이터 열 확인
+    print("원본 데이터 열:", input_df.columns) 
 
     input_df = preprocess_data(input_df)
     print("전처리 후 데이터 열:", input_df.columns) 
@@ -336,7 +399,9 @@ def main():
     detailed_quota = get_quota_input(departments, positions)
 
     department_hierarchy = {
-     "85": {"name": "임원", "sub_departments": {}},
+     "85": {"name": "임원", "sub_departments": {
+        "8500": {"name": "임원", "sub_departments": {}}
+     }},
     "84": {
         "name": "안전감사실",
         "sub_departments": {
@@ -416,7 +481,10 @@ def main():
             }
         }
     },
-    "89": {"name": "사회서비스단", "sub_departments": {}}
+    "89": {"name": "사회서비스단", 
+    "sub_departments": {
+        "8900": {"name": "사회서비스단",  "sub_departments": {}}
+    }}
 }
 
     department_counts = pd.Series({dept: department_counts[dept] for dept in departments if dept in department_counts})
@@ -427,14 +495,14 @@ def main():
         position_counts,
         grouped_counts,
         total_quota,
-        {},  # position_quota
-        {},  # department_quota
+        {}, 
+        {}, 
         detailed_quota,
         sub_department_counts,
         department_hierarchy,
         input_df,
-        departments,  # 사용자 지정 부서 순서
-        positions     # 사용자 지정 직급 순서
+        departments, 
+        positions    
     )
 
 if __name__ == "__main__":

@@ -244,19 +244,36 @@ def traverse_hierarchy_and_count(hierarchy, input_df):
         }
     return updated_hierarchy
 
-def write_hierarchy_to_excel(ws, hierarchy, input_df, parent=None):
-    """계층 구조 데이터를 엑셀에 기록"""
+def write_hierarchy_to_excel(ws, hierarchy, input_df, parent=None, color_cycle=None, is_top_level=True):
+    if color_cycle is None:
+        color_cycle = ["FFCCCC", "CCFFCC", "CCCCFF", "FFFFCC", "CCFFFF", "FFCCFF"]
+
+    current_color_index = 0 
     for code, data in hierarchy.items():
         name = data["name"]
         current_count = data["현원"]
         sub_departments = data["sub_departments"]
 
         names = input_df[input_df["부서"].astype(str) == code]["한글명"].tolist()
-        
-        names_str = ", ".join(names) if names else " "
 
-        ws.append([parent, name, current_count, names_str])
-        write_hierarchy_to_excel(ws, sub_departments, input_df, parent=name)
+        row = ws.max_row + 1
+
+        ws.cell(row=row, column=1, value=name) 
+        ws.cell(row=row, column=2, value=current_count) 
+
+        if is_top_level:
+            fill = PatternFill(start_color=color_cycle[current_color_index % len(color_cycle)],
+                               end_color=color_cycle[current_color_index % len(color_cycle)],
+                               fill_type="solid")
+            ws.cell(row=row, column=1).fill = fill 
+            ws.cell(row=row, column=2).fill = fill
+            current_color_index += 1 
+
+        if names:
+            for i, person_name in enumerate(names):
+                ws.cell(row=row + i + 1, column=3, value=person_name) 
+
+        write_hierarchy_to_excel(ws, sub_departments, input_df, parent=None, color_cycle=color_cycle, is_top_level=False)
 
 def create_excel_file(
     department_counts,
@@ -341,21 +358,28 @@ def create_excel_file(
 
     plt.show()
 
-    ws_hierarchy = wb.create_sheet(title="부서 계층 구조")
-    ws_hierarchy.append(["상위 부서", "하위 부서", "현원", "이름 목록"])
+    ws_hierarchy = wb.create_sheet(title="부서별 세부 인원")
+    ws_hierarchy.append(["부서", "현원", "이름 목록"])
+
+    ws_hierarchy.column_dimensions['A'].width = 18 
 
     updated_hierarchy = traverse_hierarchy_and_count(department_hierarchy, input_df)
     write_hierarchy_to_excel(ws_hierarchy, updated_hierarchy, input_df)
 
     for ws in [ws_main, ws_hierarchy]:
-        for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=5):
+        if ws.title == "정원 및 현황":
+            max_col = 5 
+        elif ws.title == "부서별 세부 인원":
+            max_col = ws.max_column 
+
+        for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=max_col):
             for cell in row:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
                 cell.border = Border(left=Side(style="thin"),
-                                     right=Side(style="thin"),
-                                     top=Side(style="thin"),
-                                     bottom=Side(style="thin"))
-                if cell.row == 1:
+                                    right=Side(style="thin"),
+                                    top=Side(style="thin"),
+                                    bottom=Side(style="thin"))
+                if cell.row == 1: 
                     cell.font = Font(bold=True)
                     cell.fill = PatternFill(start_color="FFFFCC", end_color="FFFFCC", fill_type="solid")
 
@@ -371,11 +395,11 @@ def main():
         return
 
     input_df = pd.read_excel(file_path)
-    print("원본 데이터 열:", input_df.columns) 
+    # print("원본 데이터 열:", input_df.columns) 
 
     input_df = preprocess_data(input_df)
-    print("전처리 후 데이터 열:", input_df.columns) 
-    print(input_df[["부서", "부서.1", "세부부서"]].head())  
+    # print("전처리 후 데이터 열:", input_df.columns) 
+    # print(input_df[["부서", "부서.1", "세부부서"]].head())  
 
     if "세부부서" not in input_df.columns:
         print("세부부서 열이 없습니다. 데이터 전처리를 확인하세요.")

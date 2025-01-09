@@ -6,6 +6,7 @@ from openpyxl.chart import BarChart, Reference
 import datetime
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
+from openpyxl.utils import get_column_letter
 
 plt.rc('font', family='Malgun Gothic')  
 plt.rcParams['axes.unicode_minus'] = False 
@@ -25,6 +26,9 @@ def get_sorting_order(departments, positions):
     root = Toplevel()
     root.title("정렬 순서 선택")
     root.geometry("500x500") 
+
+    departments = ["안전감사실", "임원", "전략기획실", "경영지원부", "체육사업부","주차사업부","시설관리부","사회서비스단"] 
+    positions = ["임원", "2급", "3급","4급","5급","6급","7급","시설안내원","주차관리원","지도직","환경관리","비서","사무보조"] 
 
     use_custom_order = BooleanVar()
     use_custom_order.set(False)
@@ -98,16 +102,16 @@ def get_quota_input(departments, positions):
     Label(root, text="정원을 입력하세요", font=("Arial", 14)).grid(row=row, column=0, columnspan=3 + len(positions), pady=10)
     row += 1
 
-    Label(root, text="부서").grid(row=row, column=0, padx=10, pady=5)
+    Label(root, text="부서").grid(row=row, column=0, padx=5, pady=5)
     for col, position in enumerate(positions, start=1):
-        Label(root, text=position).grid(row=row, column=col, padx=10, pady=5)
+        Label(root, text=position).grid(row=row, column=col, padx=5, pady=5)
     row += 1
 
     for department in departments:
-        Label(root, text=department).grid(row=row, column=0, padx=10, pady=5, sticky="e")
+        Label(root, text=department).grid(row=row, column=0, padx=5, pady=5, sticky="e")
         for col, position in enumerate(positions, start=1):
-            entry = Entry(root)
-            entry.grid(row=row, column=col, padx=10, pady=5)
+            entry = Entry(root, width=5)
+            entry.grid(row=row, column=col, padx=5, pady=8)
             entries[(department, position)] = entry
         row += 1
 
@@ -165,7 +169,6 @@ def get_quota_input(departments, positions):
     root.wait_window()
     return detailed_quota
 
-
 def preprocess_data(input_df):
     """데이터 전처리"""
     department_mapping = {
@@ -221,7 +224,7 @@ def preprocess_data(input_df):
     input_df["세부부서"] = input_df["부서"].astype(str).map(sub_department_mapping).fillna("기타")
 
     input_df["직급"] = input_df["직급"].replace(
-        {"이사장": "임원", "본부장": "임원", "수영강사": "전문지도직", "헬스강사": "전문지도직", "테니스강사": "전문지도직"}
+        {"이사장": "임원", "본부장": "임원", "수영강사": "지도직", "헬스강사": "지도직", "테니스강사": "지도직", "환경관리원":"환경관리"}
     )
 
     input_df = input_df[~input_df["직급"].isin(["기간제근로", "휴직대체(7", "운동처방사", "체력측정사"])]
@@ -303,33 +306,94 @@ def create_excel_file(
     ws_main = wb.active
     ws_main.title = "정원 및 현황"
 
-    ws_main.append(["구분", "항목", "현원", "정원", "과부족"])
+    ws_main.append(["구분", "계"] + [None] + position_order) 
+    ws_main.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2) 
+    ws_main.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2) 
+    ws_main.cell(row=1, column=1).value = "구분"
+
+    ws_main.cell(row=1, column=3).value = "계"
+
+    for col in range(1, 4 + len(position_order)): 
+        cell = ws_main.cell(row=1, column=col)
+        if col > 3: 
+            cell.value = position_order[col - 4] 
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.font = Font(bold=True)
+        cell.border = Border(
+            left=Side(style="thin"), right=Side(style="thin"),
+            top=Side(style="thin"), bottom=Side(style="thin")
+        )
 
     total_current = sum(department_counts.values)
     total_quota = sum(department_quota.values())
     total_surplus_deficit = total_current - total_quota
-    ws_main.append(["전체", "전체 정원", total_current, total_quota, total_surplus_deficit])
+    ws_main.append(["정원", total_quota] + [position_quota.get(pos, 0) for pos in position_order]) 
+    ws_main.append(["현원", total_current] + [position_counts.get(pos, 0) for pos in position_order]) 
+    ws_main.append(["과부족", total_surplus_deficit] + [
+        position_counts.get(pos, 0) - position_quota.get(pos, 0) for pos in position_order
+    ])  
 
-    ws_main.append(["부서별", None, None, None, None])
-    start_row = ws_main.max_row + 1 
-    for department, count in sorted(department_counts.items(), key=lambda x: department_order.index(x[0])):
-        quota = department_quota.get(department, 0)
-        surplus_deficit = count - quota
-        ws_main.append(["", department, count, quota, surplus_deficit])
+    current_row = ws_main.max_row + 1 
 
-    ws_main.append(["직급별", None, None, None, None])
-    for position, count in sorted(position_counts.items(), key=lambda x: position_order.index(x[0])):
-        quota = position_quota.get(position, 0)
-        surplus_deficit = count - quota
-        ws_main.append(["", position, count, quota, surplus_deficit])
+    for department in department_order:
+        total_quota = sum(detailed_quota.get(department, {}).values())
+        total_current = sum(grouped_counts.get((department, pos), 0) for pos in position_order)
+        total_surplus_deficit = total_current - total_quota
 
-    ws_main.append(["부서별 세부 정원 및 현원", None, None, None, None])
-    for department, allocation in detailed_quota.items():
-        ws_main.append(["", department, None, None, None])
-        for category, quota in allocation.items():
-            current_count = grouped_counts.get((department, category), 0) 
-            surplus_deficit = current_count - quota
-            ws_main.append(["", f"  {category}", current_count, quota, surplus_deficit])
+        ws_main.cell(row=current_row, column=1).value = department 
+        ws_main.merge_cells(
+            start_row=current_row,
+            start_column=1,
+            end_row=current_row + 2, 
+            end_column=1
+        )
+        ws_main.cell(row=current_row, column=1).alignment = Alignment(horizontal="center", vertical="center")
+        ws_main.cell(row=current_row, column=1).font = Font(bold=True)
+
+        ws_main.cell(row=current_row, column=2).value = "정원"
+        ws_main.cell(row=current_row + 1, column=2).value = "현원"
+        ws_main.cell(row=current_row + 2, column=2).value = "과부족"
+
+        for row, bg_color, font_color, bold in zip(
+            [current_row, current_row + 1, current_row + 2],
+            ["FDE9D9", "92D050", "FFFF00"], 
+            ["000000", "000000", "FF0000"],
+            [False, False, True] 
+        ):
+            for col in range(2, 4 + len(position_order)): 
+                cell = ws_main.cell(row=row, column=col)
+                cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
+                cell.font = Font(color=font_color, bold=bold)
+                cell.alignment = Alignment(horizontal="center", vertical="center")
+
+        ws_main.cell(row=current_row, column=3).value = total_quota
+        ws_main.cell(row=current_row + 1, column=3).value = total_current
+        ws_main.cell(row=current_row + 2, column=3).value = total_surplus_deficit
+
+        for col_index, position in enumerate(position_order, start=4):  # 직급별 데이터는 4열부터 시작
+            quota_value = detailed_quota.get(department, {}).get(position, 0)
+            current_value = grouped_counts.get((department, position), 0)
+            surplus_deficit_value = current_value - quota_value
+
+            ws_main.cell(row=current_row, column=col_index).value = quota_value
+            ws_main.cell(row=current_row + 1, column=col_index).value = current_value
+            ws_main.cell(row=current_row + 2, column=col_index).value = surplus_deficit_value
+
+        current_row += 3  # 다음 부서로 이동
+
+    # ws_main.append(["직급별", None, None, None, None])
+    # for position, count in sorted(position_counts.items(), key=lambda x: position_order.index(x[0])):
+    #     quota = position_quota.get(position, 0)
+    #     surplus_deficit = count - quota
+    #     ws_main.append(["", position, count, quota, surplus_deficit])
+
+    # ws_main.append(["부서별 세부 정원 및 현원", None, None, None, None])
+    # for department, allocation in detailed_quota.items():
+    #     ws_main.append(["", department, None, None, None])
+    #     for category, quota in allocation.items():
+    #         current_count = grouped_counts.get((department, category), 0) 
+    #         surplus_deficit = current_count - quota
+    #         ws_main.append(["", f"  {category}", current_count, quota, surplus_deficit])
 
     department_names = [dept for dept, _ in sorted(department_counts.items(), key=lambda x: department_order.index(x[0]))]
     current_values = [department_counts[dept] for dept in department_names]
@@ -362,24 +426,19 @@ def create_excel_file(
     ws_hierarchy.append(["부서", "현원", "이름 목록"])
 
     ws_hierarchy.column_dimensions['A'].width = 18 
+    ws_main.column_dimensions['A'].width = 13
 
     updated_hierarchy = traverse_hierarchy_and_count(department_hierarchy, input_df)
     write_hierarchy_to_excel(ws_hierarchy, updated_hierarchy, input_df)
 
     for ws in [ws_main, ws_hierarchy]:
-        if ws.title == "정원 및 현황":
-            max_col = 5 
-        elif ws.title == "부서별 세부 인원":
-            max_col = ws.max_column 
-
+        max_col = ws.max_column 
         for row in ws.iter_rows(min_row=1, max_row=ws.max_row, min_col=1, max_col=max_col):
             for cell in row:
                 cell.alignment = Alignment(horizontal="center", vertical="center")
-                cell.border = Border(left=Side(style="thin"),
-                                    right=Side(style="thin"),
-                                    top=Side(style="thin"),
-                                    bottom=Side(style="thin"))
-                if cell.row == 1: 
+                cell.border = Border(left=Side(style="thin"), right=Side(style="thin"),
+                                    top=Side(style="thin"), bottom=Side(style="thin"))
+                if cell.row == 1:
                     cell.font = Font(bold=True)
                     cell.fill = PatternFill(start_color="FFFFCC", end_color="FFFFCC", fill_type="solid")
 
@@ -407,6 +466,12 @@ def main():
 
     department_counts = input_df["부서.1"].value_counts()
     position_counts = input_df["직급"].value_counts()
+    position_counts["2급"] = 0
+    position_counts["비서"] = 0
+
+    positions = position_counts.index.tolist()
+    positions.extend(["2급", "비서"])
+
     grouped_counts = input_df.groupby(["부서.1", "직급"]).size()
     sub_department_counts = input_df["세부부서"].value_counts()
 

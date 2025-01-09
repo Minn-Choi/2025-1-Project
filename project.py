@@ -310,7 +310,6 @@ def create_excel_file(
     ws_main.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2) 
     ws_main.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2) 
     ws_main.cell(row=1, column=1).value = "구분"
-
     ws_main.cell(row=1, column=3).value = "계"
 
     for col in range(1, 4 + len(position_order)): 
@@ -327,13 +326,41 @@ def create_excel_file(
     total_current = sum(department_counts.values)
     total_quota = sum(department_quota.values())
     total_surplus_deficit = total_current - total_quota
-    ws_main.append(["정원", total_quota] + [position_quota.get(pos, 0) for pos in position_order]) 
-    ws_main.append(["현원", total_current] + [position_counts.get(pos, 0) for pos in position_order]) 
-    ws_main.append(["과부족", total_surplus_deficit] + [
+
+    ws_main.append(["정원", total_quota, None] + [position_quota.get(pos, 0) for pos in position_order]) 
+    ws_main.append(["현원", total_current, None] + [position_counts.get(pos, 0) for pos in position_order]) 
+    ws_main.append(["과부족", total_surplus_deficit, None] + [
         position_counts.get(pos, 0) - position_quota.get(pos, 0) for pos in position_order
-    ])  
+    ])
+
+    for row_idx, title in enumerate(["정원", "현원", "과부족"], start=2):
+        ws_main.merge_cells(start_row=row_idx, start_column=1, end_row=row_idx, end_column=2)
+        ws_main.cell(row=row_idx, column=1).value = title  
+        for col in range(1, 5 + len(position_order)):  
+            cell = ws_main.cell(row=row_idx, column=col)
+            cell.alignment = Alignment(horizontal="center", vertical="center") 
+            cell.font = Font(bold=True) if col == 1 else Font()  
+            cell.border = Border(
+                left=Side(style="thin"), right=Side(style="thin"),
+                top=Side(style="thin"), bottom=Side(style="thin")
+            )
+
+    for row_idx, total_value in enumerate([total_quota, total_current, total_surplus_deficit], start=2):
+        ws_main.cell(row=row_idx, column=3).value = total_value 
+        cell = ws_main.cell(row=row_idx, column=3)
+        cell.alignment = Alignment(horizontal="center", vertical="center")
+        cell.font = Font(bold=True)
+        cell.border = Border(
+            left=Side(style="thin"), right=Side(style="thin"),
+            top=Side(style="thin"), bottom=Side(style="thin")
+        )
 
     current_row = ws_main.max_row + 1 
+
+    max_col = ws_main.max_column  
+    if max_col > 0: 
+        ws_main.delete_cols(max_col)
+
 
     for department in department_order:
         total_quota = sum(detailed_quota.get(department, {}).values())
@@ -370,7 +397,7 @@ def create_excel_file(
         ws_main.cell(row=current_row + 1, column=3).value = total_current
         ws_main.cell(row=current_row + 2, column=3).value = total_surplus_deficit
 
-        for col_index, position in enumerate(position_order, start=4):  # 직급별 데이터는 4열부터 시작
+        for col_index, position in enumerate(position_order, start=4):
             quota_value = detailed_quota.get(department, {}).get(position, 0)
             current_value = grouped_counts.get((department, position), 0)
             surplus_deficit_value = current_value - quota_value
@@ -379,21 +406,7 @@ def create_excel_file(
             ws_main.cell(row=current_row + 1, column=col_index).value = current_value
             ws_main.cell(row=current_row + 2, column=col_index).value = surplus_deficit_value
 
-        current_row += 3  # 다음 부서로 이동
-
-    # ws_main.append(["직급별", None, None, None, None])
-    # for position, count in sorted(position_counts.items(), key=lambda x: position_order.index(x[0])):
-    #     quota = position_quota.get(position, 0)
-    #     surplus_deficit = count - quota
-    #     ws_main.append(["", position, count, quota, surplus_deficit])
-
-    # ws_main.append(["부서별 세부 정원 및 현원", None, None, None, None])
-    # for department, allocation in detailed_quota.items():
-    #     ws_main.append(["", department, None, None, None])
-    #     for category, quota in allocation.items():
-    #         current_count = grouped_counts.get((department, category), 0) 
-    #         surplus_deficit = current_count - quota
-    #         ws_main.append(["", f"  {category}", current_count, quota, surplus_deficit])
+        current_row += 3 
 
     department_names = [dept for dept, _ in sorted(department_counts.items(), key=lambda x: department_order.index(x[0]))]
     current_values = [department_counts[dept] for dept in department_names]
@@ -427,6 +440,7 @@ def create_excel_file(
 
     ws_hierarchy.column_dimensions['A'].width = 18 
     ws_main.column_dimensions['A'].width = 13
+    ws_main.column_dimensions['B'].width = 11
 
     updated_hierarchy = traverse_hierarchy_and_count(department_hierarchy, input_df)
     write_hierarchy_to_excel(ws_hierarchy, updated_hierarchy, input_df)

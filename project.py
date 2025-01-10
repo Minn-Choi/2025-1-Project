@@ -7,6 +7,10 @@ import datetime
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 from openpyxl.utils import get_column_letter
+from tkinter import Canvas
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import sys
+from tkinter import Toplevel, Button, Canvas
 
 plt.rc('font', family='Malgun Gothic')  
 plt.rcParams['axes.unicode_minus'] = False 
@@ -433,7 +437,114 @@ def create_excel_file(
     plt.legend(fontsize=11)
     plt.tight_layout()
 
-    plt.show()
+    def show_graph_interface(graphs):
+        """Tkinter 창에서 그래프 전환 및 저장"""
+        root = Toplevel()
+        root.title("그래프 보기")
+        root.geometry("1200x800")  # 창 크기 설정
+
+        # 창 닫기 이벤트에 종료 함수 연결
+        def on_close():
+            root.destroy()
+            sys.exit()  # 프로그램 완전히 종료
+
+        root.protocol("WM_DELETE_WINDOW", on_close)  # 창 닫기 이벤트 설정
+
+        # Canvas를 확장하여 전체 화면에 그래프를 표시
+        figure_canvas = None
+        current_index = [0]  # 그래프 인덱스
+
+        def update_canvas():
+            nonlocal figure_canvas
+            if figure_canvas:
+                figure_canvas.get_tk_widget().pack_forget()
+            fig = graphs[current_index[0]]
+            figure_canvas = FigureCanvasTkAgg(fig, master=root)
+            figure_canvas.draw()
+            figure_canvas.get_tk_widget().pack(fill="both", expand=True)  # 전체 화면에 맞게 확장
+
+        def next_graph():
+            current_index[0] = (current_index[0] + 1) % len(graphs)
+            update_canvas()
+
+        def prev_graph():
+            current_index[0] = (current_index[0] - 1) % len(graphs)
+            update_canvas()
+
+        def save_graph():
+            fig = graphs[current_index[0]]
+            file_name = f"graph_{current_index[0] + 1}.png"
+            fig.savefig(file_name, bbox_inches="tight")  # 잘림 방지를 위해 bbox_inches="tight" 사용
+            print(f"그래프가 저장되었습니다: {file_name}")
+
+        # 버튼 배치
+        Button(root, text="이전 그래프", command=prev_graph).pack(side="left", padx=10)
+        Button(root, text="다음 그래프", command=next_graph).pack(side="left", padx=10)
+        Button(root, text="그래프 저장", command=save_graph).pack(side="right", padx=10)
+
+        update_canvas()  # 첫 번째 그래프 표시
+        root.mainloop()
+
+        # 부서 순서대로 정렬
+    sorted_indices = [department_names.index(name) for name in department_order]
+
+    department_names = [department_names[i] for i in sorted_indices]
+    current_values = [current_values[i] for i in sorted_indices]
+    quota_values = [quota_values[i] for i in sorted_indices]
+    surplus_deficit = [surplus_deficit[i] for i in sorted_indices]
+
+    
+    def plot_graphs(department_names, current_values, quota_values, surplus_deficit):
+        """여러 그래프를 생성하여 저장"""
+        graphs = []
+
+        # 부서 순서대로 정렬
+        sorted_indices = [department_names.index(name) for name in department_order]
+        department_names = [department_names[i] for i in sorted_indices]
+        current_values = [current_values[i] for i in sorted_indices]
+        quota_values = [quota_values[i] for i in sorted_indices]
+        surplus_deficit = [surplus_deficit[i] for i in sorted_indices]
+
+        # 그래프 1: 부서별 현원/정원/과부족 비교
+        fig1 = plt.figure(figsize=(15, 9))  # 그래프 크기 설정
+        x = range(len(department_names))
+        width = 0.3
+
+        bars_current = plt.bar(x, current_values, width=width, label="현원", align="center", color='skyblue')
+        bars_quota = plt.bar([i + width for i in x], quota_values, width=width, label="정원", align="center", color='lightgreen')
+        bars_surplus = plt.bar([i + 2 * width for i in x], surplus_deficit, width=width, label="과부족", align="center", color='salmon')
+
+        plt.xticks([i + width for i in x], department_names, rotation=45)
+        for bars, data in zip([bars_current, bars_quota, bars_surplus], [current_values, quota_values, surplus_deficit]):
+            for bar, value in zip(bars, data):
+                plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.5, str(value), ha="center", va="bottom", fontsize=10)
+
+        plt.title("부서별 현원/정원/과부족 비교", fontsize=16, pad=20)  # 제목과 그래프 사이 간격 설정
+        plt.xlabel("부서", fontsize=11)
+        plt.ylabel("인원", fontsize=11)
+        plt.legend(fontsize=11)
+        plt.tight_layout()  # 전체 레이아웃 최적화
+        plt.subplots_adjust(top=0.90, left=0.1, right=0.9)  # 제목과 여백 조정
+        graphs.append(fig1)
+
+        # 그래프 2: 부서별 과부족 비율
+        fig2 = plt.figure(figsize=(15, 9))
+        deficit_ratio = [round(s / q * 100, 2) if q != 0 else 0 for s, q in zip(surplus_deficit, quota_values)]
+        plt.bar(department_names, deficit_ratio, color="salmon")
+        plt.title("부서별 과부족 비율", fontsize=16, pad=20)  # 제목과 그래프 사이 간격 설정
+        plt.xlabel("부서", fontsize=11)
+        plt.subplots_adjust(top=0.90, left=0.1, right=0.9)  # 제목과 여백 조정
+        plt.ylabel("과부족 비율 (%)", fontsize=11)
+        for i, v in enumerate(deficit_ratio):
+            plt.text(i, v + 0.5, f"{v}%", ha="center", fontsize=10)
+        plt.tight_layout()  # 전체 레이아웃 최적화
+        plt.subplots_adjust(top=0.85, left=0.1, right=0.9)  # 제목과 여백 조정
+        graphs.append(fig2)
+
+        return graphs
+
+
+    graphs = plot_graphs(department_names, current_values, quota_values, surplus_deficit)
 
     ws_hierarchy = wb.create_sheet(title="부서별 세부 인원")
     ws_hierarchy.append(["부서", "현원", "이름 목록"])
@@ -460,6 +571,8 @@ def create_excel_file(
     wb.save(file_name)
     print(f"엑셀 파일이 생성되었습니다: {file_name}")
 
+    show_graph_interface(graphs)
+
 
 def main():
     file_path = select_file()
@@ -473,6 +586,7 @@ def main():
     input_df = preprocess_data(input_df)
     # print("전처리 후 데이터 열:", input_df.columns) 
     # print(input_df[["부서", "부서.1", "세부부서"]].head())  
+
 
     if "세부부서" not in input_df.columns:
         print("세부부서 열이 없습니다. 데이터 전처리를 확인하세요.")

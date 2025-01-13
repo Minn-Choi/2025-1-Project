@@ -1,16 +1,16 @@
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Alignment, Font, Border, Side
-from tkinter import Tk, Toplevel, Label, Entry, Button, filedialog, Checkbutton, BooleanVar, Listbox, END, Frame
+from tkinter import Tk, Toplevel, Label, Entry, Button, filedialog, Checkbutton, BooleanVar, Listbox, END, Frame, StringVar
 from openpyxl.chart import BarChart, Reference
 import datetime
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 from openpyxl.utils import get_column_letter
-from tkinter import Canvas
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import sys
 from tkinter import Toplevel, Button, Canvas
+from tkinter.ttk import Treeview, Scrollbar
 
 plt.rc('font', family='Malgun Gothic')  
 plt.rcParams['axes.unicode_minus'] = False 
@@ -365,19 +365,27 @@ def create_excel_file(
     if max_col > 0: 
         ws_main.delete_cols(max_col)
 
-
     for department in department_order:
         total_quota = sum(detailed_quota.get(department, {}).values())
         total_current = sum(grouped_counts.get((department, pos), 0) for pos in position_order)
         total_surplus_deficit = total_current - total_quota
 
-        ws_main.cell(row=current_row, column=1).value = department 
+        sub_department_count = 0
+        for department_code, department_data in department_hierarchy.items():
+            if department_data["name"] == department:
+                for sub_code, sub_data in department_data["sub_departments"].items():
+                    sub_department_count += 1
+                    sub_department_count += len(sub_data["sub_departments"])  
+
+        total_merge_rows = 3 + sub_department_count 
+        ws_main.cell(row=current_row, column=1).value = department
         ws_main.merge_cells(
             start_row=current_row,
             start_column=1,
-            end_row=current_row + 2, 
+            end_row=current_row + total_merge_rows - 1,
             end_column=1
         )
+
         ws_main.cell(row=current_row, column=1).alignment = Alignment(horizontal="center", vertical="center")
         ws_main.cell(row=current_row, column=1).font = Font(bold=True)
 
@@ -387,11 +395,11 @@ def create_excel_file(
 
         for row, bg_color, font_color, bold in zip(
             [current_row, current_row + 1, current_row + 2],
-            ["FDE9D9", "92D050", "FFFF00"], 
+            ["FDE9D9", "92D050", "FFFF00"],
             ["000000", "000000", "FF0000"],
-            [False, False, True] 
+            [False, False, True]
         ):
-            for col in range(2, 4 + len(position_order)): 
+            for col in range(2, 4 + len(position_order)):
                 cell = ws_main.cell(row=row, column=col)
                 cell.fill = PatternFill(start_color=bg_color, end_color=bg_color, fill_type="solid")
                 cell.font = Font(color=font_color, bold=bold)
@@ -410,7 +418,27 @@ def create_excel_file(
             ws_main.cell(row=current_row + 1, column=col_index).value = current_value
             ws_main.cell(row=current_row + 2, column=col_index).value = surplus_deficit_value
 
-        current_row += 3 
+        current_row += 3  
+
+        for department_code, department_data in department_hierarchy.items():
+            if department_data["name"] == department:
+                for sub_code, sub_data in department_data["sub_departments"].items():
+                    sub_name = sub_data["name"]
+                    sub_current = input_df[input_df["부서"].astype(str) == sub_code].shape[0]
+
+                    ws_main.cell(row=current_row, column=2).value = sub_name
+                    ws_main.cell(row=current_row, column=3).value = sub_current
+                    current_row += 1
+
+                    for sub_sub_code, sub_sub_data in sub_data["sub_departments"].items():
+                        sub_sub_name = sub_sub_data["name"]
+                        sub_sub_current = input_df[input_df["부서"].astype(str) == sub_sub_code].shape[0]
+
+                        ws_main.cell(row=current_row, column=2).value = sub_sub_name
+                        ws_main.cell(row=current_row, column=3).value = sub_sub_current
+                        current_row += 1
+
+        ws_main.column_dimensions['B'].width = 18
 
     department_names = [dept for dept, _ in sorted(department_counts.items(), key=lambda x: department_order.index(x[0]))]
     current_values = [department_counts[dept] for dept in department_names]
@@ -437,29 +465,34 @@ def create_excel_file(
     plt.legend(fontsize=11)
     plt.tight_layout()
 
-    def show_graph_interface(graphs):
-        """Tkinter 창에서 그래프 전환 및 저장"""
+    from tkinter.ttk import Treeview, Scrollbar
+
+    def show_graph_and_preview_interface(graphs, excel_file):
+        """그래프와 엑셀 미리보기 인터페이스"""
         root = Toplevel()
-        root.title("그래프 보기")
-        root.geometry("1200x800")
+        root.title("그래프 및 엑셀 미리보기")
+        root.geometry("1400x800")
 
         def on_close():
             root.destroy()
-            sys.exit() 
+            sys.exit()
 
-        root.protocol("WM_DELETE_WINDOW", on_close) 
+        root.protocol("WM_DELETE_WINDOW", on_close)
+
+        graph_frame = Frame(root, width=1200, height=700, bg="white")
+        graph_frame.pack(side="top", fill="both", expand=True)
 
         figure_canvas = None
-        current_index = [0] 
+        current_index = [0]
 
         def update_canvas():
             nonlocal figure_canvas
             if figure_canvas:
                 figure_canvas.get_tk_widget().pack_forget()
             fig = graphs[current_index[0]]
-            figure_canvas = FigureCanvasTkAgg(fig, master=root)
+            figure_canvas = FigureCanvasTkAgg(fig, master=graph_frame)
             figure_canvas.draw()
-            figure_canvas.get_tk_widget().pack(fill="both", expand=True) 
+            figure_canvas.get_tk_widget().pack(fill="both", expand=True)
 
         def next_graph():
             current_index[0] = (current_index[0] + 1) % len(graphs)
@@ -472,14 +505,72 @@ def create_excel_file(
         def save_graph():
             fig = graphs[current_index[0]]
             file_name = f"graph_{current_index[0] + 1}.png"
-            fig.savefig(file_name, bbox_inches="tight") 
+            fig.savefig(file_name, bbox_inches="tight")
             print(f"그래프가 저장되었습니다: {file_name}")
 
-        Button(root, text="이전 그래프", command=prev_graph).pack(side="left", padx=10)
-        Button(root, text="다음 그래프", command=next_graph).pack(side="left", padx=10)
-        Button(root, text="그래프 저장", command=save_graph).pack(side="right", padx=10)
+            button_frame = Frame(root, height=50, bg="lightgray")
+            button_frame.pack(side="top", fill="x")
 
-        update_canvas() 
+
+        def preview_excel():
+            """엑셀 내용을 미리보기로 표시"""
+            preview_window = Toplevel(root)
+            preview_window.title("엑셀 미리보기")
+            preview_window.geometry("800x600")
+
+            df = pd.read_excel(excel_file)
+
+            tree = Treeview(preview_window, columns=list(df.columns), show="headings", height=20)
+
+            for col in df.columns:
+                tree.heading(col, text=col)
+                tree.column(col, width=120, anchor="center")
+
+            for _, row in df.iterrows():
+                tree.insert("", END, values=list(row))
+
+            vsb = Scrollbar(preview_window, orient="vertical", command=tree.yview)
+            vsb.pack(side="right", fill="y")
+            tree.configure(yscrollcommand=vsb.set)
+
+            tree.pack(fill="both", expand=True)
+
+            def show_name_list(event):
+                """선택된 인원에 대한 이름 목록 표시"""
+                selected_item = tree.focus() 
+                selected_values = tree.item(selected_item, "values")
+
+                if not selected_values:
+                    return
+
+                selected_department = selected_values[0] 
+                selected_count = selected_values[1] 
+
+                name_list = input_df[input_df["부서.1"] == selected_department]["한글명"].tolist()
+
+                name_window = Toplevel(preview_window)
+                name_window.title(f"{selected_department} - 이름 목록")
+                name_window.geometry("400x300")
+
+                Label(name_window, text=f"{selected_department} - {selected_count}명", font=("Arial", 12)).pack(pady=10)
+
+                name_listbox = Listbox(name_window)
+                for name in name_list:
+                    name_listbox.insert(END, name)
+
+                name_listbox.pack(fill="both", expand=True, padx=10, pady=10)
+
+            tree.bind("<Double-1>", show_name_list)
+
+        button_frame = Frame(root, height=50, bg="lightgray")
+        button_frame.pack(side="top", fill="x")
+
+        Button(button_frame, text="이전 그래프", command=prev_graph, height=2, width=15).pack(side="left", padx=10, pady=5)
+        Button(button_frame, text="다음 그래프", command=next_graph, height=2, width=15).pack(side="left", padx=10, pady=5)
+        Button(button_frame, text="그래프 저장", command=save_graph, height=2, width=15).pack(side="left", padx=10, pady=5)
+        Button(button_frame, text="엑셀 미리보기", command=preview_excel, height=2, width=15).pack(side="right", padx=10, pady=5)
+
+        update_canvas()
         root.mainloop()
 
     sorted_indices = [department_names.index(name) for name in department_order]
@@ -489,7 +580,6 @@ def create_excel_file(
     quota_values = [quota_values[i] for i in sorted_indices]
     surplus_deficit = [surplus_deficit[i] for i in sorted_indices]
 
-    
     def plot_graphs(department_names, current_values, quota_values, surplus_deficit):
         """여러 그래프를 생성하여 저장"""
         graphs = []
@@ -543,7 +633,7 @@ def create_excel_file(
 
     ws_hierarchy.column_dimensions['A'].width = 18 
     ws_main.column_dimensions['A'].width = 13
-    ws_main.column_dimensions['B'].width = 11
+
 
     updated_hierarchy = traverse_hierarchy_and_count(department_hierarchy, input_df)
     write_hierarchy_to_excel(ws_hierarchy, updated_hierarchy, input_df)
@@ -563,7 +653,7 @@ def create_excel_file(
     wb.save(file_name)
     print(f"엑셀 파일이 생성되었습니다: {file_name}")
 
-    show_graph_interface(graphs)
+    show_graph_and_preview_interface(graphs, file_name)
 
 def main():
     print("사원 정보가 적힌 엑셀 파일을 첨부해주세요.")  

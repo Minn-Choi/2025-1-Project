@@ -375,9 +375,9 @@ def create_excel_file(
             if department_data["name"] == department:
                 for sub_code, sub_data in department_data["sub_departments"].items():
                     sub_department_count += 1
-                    sub_department_count += len(sub_data["sub_departments"])  
+                    sub_department_count += len(sub_data["sub_departments"])
 
-        total_merge_rows = 3 + sub_department_count 
+        total_merge_rows = 3 + sub_department_count
         ws_main.cell(row=current_row, column=1).value = department
         ws_main.merge_cells(
             start_row=current_row,
@@ -418,7 +418,7 @@ def create_excel_file(
             ws_main.cell(row=current_row + 1, column=col_index).value = current_value
             ws_main.cell(row=current_row + 2, column=col_index).value = surplus_deficit_value
 
-        current_row += 3  
+        current_row += 3
 
         for department_code, department_data in department_hierarchy.items():
             if department_data["name"] == department:
@@ -428,6 +428,13 @@ def create_excel_file(
 
                     ws_main.cell(row=current_row, column=2).value = sub_name
                     ws_main.cell(row=current_row, column=3).value = sub_current
+
+                    for col_index, position in enumerate(position_order, start=4):
+                        sub_position_current = input_df[
+                            (input_df["부서"].astype(str) == sub_code) & (input_df["직급"] == position)
+                        ].shape[0]
+                        ws_main.cell(row=current_row, column=col_index).value = sub_position_current
+
                     current_row += 1
 
                     for sub_sub_code, sub_sub_data in sub_data["sub_departments"].items():
@@ -436,9 +443,19 @@ def create_excel_file(
 
                         ws_main.cell(row=current_row, column=2).value = sub_sub_name
                         ws_main.cell(row=current_row, column=3).value = sub_sub_current
+
+                        for col_index, position in enumerate(position_order, start=4):
+                            sub_sub_position_current = input_df[
+                                (input_df["부서"].astype(str) == sub_sub_code) & (input_df["직급"] == position)
+                            ].shape[0]
+                            ws_main.cell(row=current_row, column=col_index).value = sub_sub_position_current
+
                         current_row += 1
 
         ws_main.column_dimensions['B'].width = 18
+
+
+
 
     department_names = [dept for dept, _ in sorted(department_counts.items(), key=lambda x: department_order.index(x[0]))]
     current_values = [department_counts[dept] for dept in department_names]

@@ -231,9 +231,11 @@ def preprocess_data(input_df):
         {"이사장": "임원", "본부장": "임원", "수영강사": "지도직", "헬스강사": "지도직", "테니스강사": "지도직", "환경관리원":"환경관리"}
     )
 
-    input_df = input_df[~input_df["직급"].isin(["기간제근로", "휴직대체(7", "운동처방사", "체력측정사"])]
+    periodic_workers = input_df[input_df["직종"] == "기간제근로자"]
+    input_df = input_df[input_df["직종"] != "기간제근로자"]
 
-    return input_df
+
+    return input_df, periodic_workers
 
 def traverse_hierarchy_and_count(hierarchy, input_df):
     updated_hierarchy = {}
@@ -294,7 +296,8 @@ def create_excel_file(
     department_hierarchy,
     input_df,
     department_order,
-    position_order     
+    position_order,
+    periodic_workers    
 ):
     """엑셀 파일 생성 및 데이터 기록"""
 
@@ -309,6 +312,115 @@ def create_excel_file(
     wb = Workbook()
     ws_main = wb.active
     ws_main.title = "정원 및 현황"
+
+    from openpyxl.styles import Border, Side
+    
+    def calculate_dates(row):
+        birth_date = row.get("생년월일")
+        if pd.isna(birth_date):
+            return None, None, None, None
+
+        birth_date = pd.to_datetime(birth_date)  
+        birth_year = birth_date.year
+        birth_month_day = birth_date.strftime("%m-%d") 
+
+        if "01-01" <= birth_month_day <= "06-30":
+            retirement_date = f"{birth_year + 60}-06-30"
+            base_year = birth_year + 60
+            wage_peak_1 = f"{base_year - 3}-07-01"
+            wage_peak_2 = f"{base_year - 2}-07-01"
+            wage_peak_3 = f"{base_year - 1}-07-01"
+        elif "07-01" <= birth_month_day <= "12-31": 
+            retirement_date = f"{birth_year + 60}-12-31"
+            base_year = birth_year + 60
+            wage_peak_1 = f"{base_year - 2}-01-01"
+            wage_peak_2 = f"{base_year - 1}-01-01"
+            wage_peak_3 = f"{base_year}-01-01"
+        else:
+            return None, None, None, None
+
+        return  wage_peak_1, wage_peak_2, wage_peak_3, retirement_date
+
+    input_df[[ "임금피크(1)", "임금피크(2)", "임금피크(3)", "퇴직일자"]] = input_df.apply(
+        lambda row: pd.Series(calculate_dates(row)), axis=1
+    )
+
+    filtered_df = input_df[input_df["생년월일"].notna()]
+
+    ws_all_employees = wb.create_sheet(title="퇴직 및 임금피크")
+    header = ["이름", "직급", "입사일", "부서", "생년월일", "임금피크(1)", "임금피크(2)", "임금피크(3)", "퇴직일자"]
+    ws_all_employees.append(header)
+
+    header_fill = PatternFill(start_color="FFFFCC", end_color="FFFFCC", fill_type="solid")  
+    header_font = Font(bold=True)  
+    thin_border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin")
+    )  
+
+    for col_num, column_title in enumerate(header, start=1):
+        cell = ws_all_employees.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = thin_border
+
+    for row_idx, (_, row) in enumerate(filtered_df.iterrows(), start=2):  
+        ws_all_employees.append([  
+            row["한글명"], 
+            row["직급"], 
+            row["입사일"],
+            row["세부부서"], 
+            row["생년월일"],
+            row["임금피크(1)"], 
+            row["임금피크(2)"], 
+            row["임금피크(3)"], 
+            row["퇴직일자"]  
+        ])
+
+    for row in ws_all_employees.iter_rows(min_row=1, max_row=ws_all_employees.max_row, min_col=1, max_col=len(header)):
+        for cell in row:
+            cell.border = thin_border 
+
+    light_pink_fill = PatternFill(start_color="FFF0F5", end_color="FFF0F5", fill_type="solid")
+    for row in ws_all_employees.iter_rows(min_row=2, max_row=ws_all_employees.max_row, min_col=6, max_col=9): 
+        for cell in row:
+            cell.fill = light_pink_fill
+
+    for col in range(1, len(header) + 1):
+        col_letter = get_column_letter(col)
+        ws_all_employees.column_dimensions[col_letter].width = 15
+
+    ws_periodic_workers = wb.create_sheet(title="기간제근로자")
+    header = ["이름", "직급", "입사일", "부서"]
+    ws_periodic_workers.append(header)
+
+    header_fill = PatternFill(start_color="FFFFCC", end_color="FFFFCC", fill_type="solid") 
+    header_font = Font(bold=True)  
+    thin_border = Border(
+        left=Side(style="thin"),
+        right=Side(style="thin"),
+        top=Side(style="thin"),
+        bottom=Side(style="thin")
+    ) 
+
+    for col_num, header_text in enumerate(header, start=1):
+        cell = ws_periodic_workers.cell(row=1, column=col_num)
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.border = thin_border 
+
+    for row_idx, (_, row) in enumerate(periodic_workers.iterrows(), start=2):
+        ws_periodic_workers.append([
+            row.get("한글명"), row.get("직급"), row.get("입사일"), row.get("세부부서")
+        ])
+        for col_idx in range(1, 5):
+            ws_periodic_workers.cell(row=row_idx, column=col_idx).border = thin_border
+
+    for col in range(1, 5):
+        col_letter = get_column_letter(col)
+        ws_periodic_workers.column_dimensions[col_letter].width = 17
 
     ws_main.append(["구분", "계"] + [None] + position_order) 
     ws_main.merge_cells(start_row=1, start_column=1, end_row=1, end_column=2) 
@@ -453,9 +565,6 @@ def create_excel_file(
                         current_row += 1
 
         ws_main.column_dimensions['B'].width = 18
-
-
-
 
     department_names = [dept for dept, _ in sorted(department_counts.items(), key=lambda x: department_order.index(x[0]))]
     current_values = [department_counts[dept] for dept in department_names]
@@ -683,7 +792,7 @@ def main():
     input_df = pd.read_excel(file_path)
     # print("원본 데이터 열:", input_df.columns) 
 
-    input_df = preprocess_data(input_df)
+    input_df, periodic_workers = preprocess_data(input_df)  # 반환값 언패킹
     # print("전처리 후 데이터 열:", input_df.columns) 
     # print(input_df[["부서", "부서.1", "세부부서"]].head())  
 
@@ -818,7 +927,8 @@ def main():
         department_hierarchy,
         input_df,
         departments, 
-        positions    
+        positions,
+        periodic_workers 
     )
 
 if __name__ == "__main__":

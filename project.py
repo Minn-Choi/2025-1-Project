@@ -792,7 +792,7 @@ def main():
     input_df = pd.read_excel(file_path)
     # print("원본 데이터 열:", input_df.columns) 
 
-    input_df, periodic_workers = preprocess_data(input_df)  # 반환값 언패킹
+    input_df, periodic_workers = preprocess_data(input_df) 
     # print("전처리 후 데이터 열:", input_df.columns) 
     # print(input_df[["부서", "부서.1", "세부부서"]].head())  
 

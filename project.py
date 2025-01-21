@@ -591,8 +591,6 @@ def create_excel_file(
     plt.legend(fontsize=11)
     plt.tight_layout()
 
-    from tkinter.ttk import Treeview, Scrollbar
-
     def show_graph_and_preview_interface(graphs, excel_file):
         """그래프와 엑셀 미리보기 인터페이스"""
         root = Toplevel()
@@ -638,11 +636,19 @@ def create_excel_file(
             button_frame.pack(side="top", fill="x")
 
 
+        from tkinter.ttk import Treeview, Scrollbar, Style
+
+        from tkinter.ttk import Treeview, Scrollbar, Style
+
         def preview_excel():
             """엑셀 내용을 미리보기로 표시"""
             preview_window = Toplevel(root)
             preview_window.title("엑셀 미리보기")
             preview_window.geometry("800x600")
+
+            style = Style(preview_window)
+            style.configure("Treeview.Heading", font=("Arial", 12, "bold"))
+            style.configure("Treeview", rowheight=25, font=("Arial", 10))
 
             df = pd.read_excel(excel_file)
 
@@ -652,8 +658,26 @@ def create_excel_file(
                 tree.heading(col, text=col)
                 tree.column(col, width=120, anchor="center")
 
-            for _, row in df.iterrows():
-                tree.insert("", END, values=list(row))
+            tree.tag_configure("quota", background="#FDE9D9", foreground="black")  
+            tree.tag_configure("current", background="#92D050", foreground="black")  
+            tree.tag_configure("surplus_deficit", background="#FFFF00", foreground="red", font=("Arial", 10, "bold"))  # 과부족
+            tree.tag_configure("department", background="#FFFFFF", foreground="black")  
+            tree.tag_configure("default", background="#FFFFFF", foreground="black")  
+
+            for i, (_, row) in enumerate(df.iterrows()):
+                values = list(row)
+                tag = "default" 
+
+                if values[0] == "정원" or values[1] == "정원":
+                    tag = "quota"
+                elif values[0] == "현원" or values[1] == "현원":
+                    tag = "current"
+                elif values[0] == "과부족" or values[1] == "과부족":
+                    tag = "surplus_deficit"
+                elif values[0] in department_counts.index:  
+                    tag = "department"
+
+                tree.insert("", END, values=values, tags=(tag,))
 
             vsb = Scrollbar(preview_window, orient="vertical", command=tree.yview)
             vsb.pack(side="right", fill="y")
@@ -663,14 +687,14 @@ def create_excel_file(
 
             def show_name_list(event):
                 """선택된 인원에 대한 이름 목록 표시"""
-                selected_item = tree.focus() 
+                selected_item = tree.focus()  
                 selected_values = tree.item(selected_item, "values")
 
                 if not selected_values:
                     return
 
-                selected_department = selected_values[0] 
-                selected_count = selected_values[1] 
+                selected_department = selected_values[0]  
+                selected_count = selected_values[1]  
 
                 name_list = input_df[input_df["부서.1"] == selected_department]["한글명"].tolist()
 
@@ -687,6 +711,7 @@ def create_excel_file(
                 name_listbox.pack(fill="both", expand=True, padx=10, pady=10)
 
             tree.bind("<Double-1>", show_name_list)
+
 
         button_frame = Frame(root, height=50, bg="lightgray")
         button_frame.pack(side="top", fill="x")

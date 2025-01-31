@@ -1,7 +1,7 @@
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Alignment, Font, Border, Side
-from tkinter import Tk, Toplevel, Label, Entry, Button, filedialog, Checkbutton, BooleanVar, Listbox, END, Frame, StringVar
+from tkinter import Tk, Toplevel, ttk, Label, Entry, Button, filedialog, Checkbutton, BooleanVar, Listbox, END, Frame, StringVar
 from openpyxl.chart import BarChart, Reference
 import datetime
 import matplotlib.pyplot as plt
@@ -24,6 +24,7 @@ def select_file():
         filetypes=[("Excel Files", "*.xls;*.xlsx")]
     )
     return file_path
+
 
 def get_sorting_order(departments, positions):
     """정렬 순서를 선택하거나 사용자 지정으로 입력받는 함수"""
@@ -155,7 +156,7 @@ def get_quota_input(departments, positions):
         df = pd.DataFrame(data)
         file_name = f"정원_입력_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
         df.to_excel(file_name, index=False)
-        print(f"정원 입력 내용이 저장되었습니다: {file_name}")
+        print(f"✅ 정원 입력 내용이 저장되었습니다: {file_name}")
 
     def submit():
         """정원 입력 완료"""
@@ -231,11 +232,179 @@ def preprocess_data(input_df):
         {"이사장": "임원", "본부장": "임원", "수영강사": "지도직", "헬스강사": "지도직", "테니스강사": "지도직", "환경관리원":"환경관리"}
     )
 
-    periodic_workers = input_df[input_df["직종"] == "기간제근로자"]
+    periodic_workers = input_df[input_df["직종"] == "기간제근로자"].copy()
+
     input_df = input_df[input_df["직종"] != "기간제근로자"]
 
-
     return input_df, periodic_workers
+
+
+
+def save_to_excel_and_continue(input_df, periodic_workers, original_file_path):
+    try:
+        if original_file_path.endswith(".xls"):
+            save_path = original_file_path.replace(
+                ".xls", f"_수정본_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+            )
+        elif original_file_path.endswith(".xlsx"):
+            save_path = original_file_path.replace(
+                ".xlsx", f"_수정본_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
+            )
+        else:
+            raise ValueError(f"지원하지 않는 파일 확장자: {original_file_path}")
+
+        full_df = pd.concat([input_df, periodic_workers], ignore_index=True)  
+
+        with pd.ExcelWriter(save_path, engine='openpyxl') as writer:
+            full_df.to_excel(writer, sheet_name="전체직원", index=False)
+            periodic_workers.to_excel(writer, sheet_name="기간제근로자", index=False) 
+
+        print(f"✅ 수정된 데이터가 엑셀 파일로 저장되었습니다: {save_path}")
+
+    except Exception as e:
+        print(f"❌ 엑셀 파일 저장 중 오류 발생: {e}")
+
+
+def detect_misclassified_employees(input_df):
+    valid_positions = ["임원", "2급", "3급", "4급"]
+    invalid_positions = ["5급", "6급", "7급", "시설안내원", "주차관리원", "지도직", "환경관리", "비서", "사무보조"]
+    current_year = datetime.datetime.now().year
+
+    def is_misclassified(row):
+        birth_date = pd.to_datetime(row.get("생년월일"), errors="coerce")
+        age = None
+        if not pd.isna(birth_date):
+            age = current_year - birth_date.year
+
+        is_main_department = str(row.get("부서", "")).endswith("00")
+        position = row.get("직급", "")
+
+        if is_main_department:
+            if position in valid_positions and (age is not None and age > 57):
+                return True
+            elif position in invalid_positions:
+                return True
+        return False
+
+    misclassified_df = input_df[input_df.apply(is_misclassified, axis=1)]
+    columns_to_display = ["사원번호", "한글명", "부서", "세부부서", "직급", "생년월일"]
+    missing_columns = [col for col in columns_to_display if col not in input_df.columns]
+    if missing_columns:
+        print(f"다음 열이 누락되었습니다: {missing_columns}")
+        return pd.DataFrame()
+    return misclassified_df[columns_to_display]
+
+def show_misclassified_employees_ui(misclassified_df, input_df, original_file_path, periodic_workers):
+    if misclassified_df.empty:
+        print("잘못 분류된 데이터가 없습니다.")
+        return
+
+    sub_department_mapping = {
+        "8100": "전략기획부_부장",
+        "8101": "기획조정팀",
+        "8103": "소통경영팀",
+        "8200": "경영지원부_부장",
+        "8201": "인사총무팀",
+        "8202": "재정지원팀",
+        "8300": "체육사업부_부장",
+        "8301": "체육사업1팀",
+        "8302": "체육사업2팀",
+        "8352": "충무",
+        "8351": "무학봉",
+        "8358": "훈련원공원",
+        "8354": "회현",
+        "8353": "손기정",
+        "8361": "남산",
+        "8360": "장충",
+        "8400": "안전감사실_부장",
+        "8401": "청렴감사팀",
+        "8402": "안전보건팀",
+        "8600": "주차사업부_부장",
+        "8601": "주차사업1팀",
+        "8602": "주차사업2팀",
+        "8900": "사회서비스단",
+        "9100": "시설관리부_부장",
+        "9101": "시설관리1팀",
+        "9102": "시설관리2팀",
+        "9103": "공공시설팀",
+        "9155": "중구구민회관",
+        "9157": "공중공원화장실",
+        "9152": "중구종합복지센터",
+        "9153": "신당누리센터",
+        "9154": "교육지원센터",
+        "9151": "중립종합복지센터",
+        "9156": "충무창업큐브",
+    }
+
+    root = Toplevel()
+    root.title("잘못 분류된 데이터 수정")
+    root.geometry("800x600")
+
+    Label(root, text="잘못 분류된 데이터를 수정하세요", font=("Arial", 14)).pack(pady=10)
+
+    tree = Treeview(root, columns=list(misclassified_df.columns), show="headings", height=15)
+    for col in misclassified_df.columns:
+        tree.heading(col, text=col)
+        tree.column(col, width=120, anchor="center")
+
+    for _, row in misclassified_df.iterrows():
+        tree.insert("", "end", values=list(row))
+
+    tree.pack(fill="both", expand=True, padx=10, pady=10)
+
+    input_frame = Frame(root)
+    input_frame.pack(pady=10)
+
+    selected_code = StringVar()
+    selected_code.set("8100") 
+
+    Label(input_frame, text="새로운 부서 선택").grid(row=0, column=0, padx=5, pady=5)
+    dropdown = ttk.Combobox(input_frame, textvariable=selected_code, state="readonly", width=25)
+    dropdown["values"] = [f"{code}({name})" for code, name in sub_department_mapping.items()]
+    dropdown.grid(row=0, column=1, padx=5, pady=5)
+
+    def apply_changes():
+        selected_item = tree.focus()
+        if not selected_item:
+            print("수정할 항목을 선택해주세요.")
+            return
+
+        values = tree.item(selected_item, "values")
+        if not values:
+            print("선택된 항목에 값이 없습니다.")
+            return
+
+        selected_value = selected_code.get()
+        new_code, new_name = selected_value.split("(")[0], selected_value.split("(")[1][:-1]
+
+        name = values[1]  
+        if name in input_df["한글명"].values:
+            input_df.loc[input_df["한글명"] == name, "부서"] = new_code
+            input_df.loc[input_df["한글명"] == name, "세부부서"] = new_name
+
+            updated_values = list(values)
+            updated_values[2] = new_code 
+            updated_values[3] = new_name  
+            tree.item(selected_item, values=tuple(updated_values))
+
+            print(f"'{name}'의 부서가 '{new_code}({new_name})'로 수정되었습니다.")
+
+    def on_done():
+        try:
+            root.destroy()
+            save_to_excel_and_continue(input_df, periodic_workers, original_file_path)
+
+            main(skip_misclassified_check=True)
+
+        except Exception as e:
+            print(f"❌ 저장 후 재시작 중 오류 발생: {e}")
+
+
+
+    Button(input_frame, text="수정 적용", command=apply_changes).grid(row=1, column=0, columnspan=2, pady=10)
+    Button(root, text="수정 완료 및 저장", command=on_done).pack(side="left", padx=10, pady=10)
+
+    root.mainloop()
 
 def traverse_hierarchy_and_count(hierarchy, input_df):
     updated_hierarchy = {}
@@ -637,9 +806,7 @@ def create_excel_file(
 
 
         from tkinter.ttk import Treeview, Scrollbar, Style
-
-        from tkinter.ttk import Treeview, Scrollbar, Style
-
+        
         def preview_excel():
             """엑셀 내용을 미리보기로 표시"""
             preview_window = Toplevel(root)
@@ -660,7 +827,7 @@ def create_excel_file(
 
             tree.tag_configure("quota", background="#FDE9D9", foreground="black")  
             tree.tag_configure("current", background="#92D050", foreground="black")  
-            tree.tag_configure("surplus_deficit", background="#FFFF00", foreground="red", font=("Arial", 10, "bold"))  # 과부족
+            tree.tag_configure("surplus_deficit", background="#FFFF00", foreground="red", font=("Arial", 10, "bold"))
             tree.tag_configure("department", background="#FFFFFF", foreground="black")  
             tree.tag_configure("default", background="#FFFFFF", foreground="black")  
 
@@ -802,28 +969,34 @@ def create_excel_file(
 
     file_name = f"정원_현황_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     wb.save(file_name)
-    print(f"엑셀 파일이 생성되었습니다: {file_name}")
+    print(f"✅ 엑셀 파일이 생성되었습니다: {file_name}")
 
     show_graph_and_preview_interface(graphs, file_name)
 
-def main():
-    print("사원 정보가 적힌 엑셀 파일을 첨부해주세요.")  
-
+def main(skip_misclassified_check=False):
+    print("✅ 사원 정보가 적힌 엑셀 파일을 첨부해주세요.")
     file_path = select_file()
+
     if not file_path:
         print("파일이 선택되지 않았습니다.")
         return
 
-    input_df = pd.read_excel(file_path)
-    # print("원본 데이터 열:", input_df.columns) 
-
-    input_df, periodic_workers = preprocess_data(input_df) 
-    # print("전처리 후 데이터 열:", input_df.columns) 
-    # print(input_df[["부서", "부서.1", "세부부서"]].head())  
+    input_df, periodic_workers = preprocess_data(pd.read_excel(file_path))
 
     if "세부부서" not in input_df.columns:
         print("세부부서 열이 없습니다. 데이터 전처리를 확인하세요.")
         return
+
+    if not skip_misclassified_check:
+        misclassified_df = detect_misclassified_employees(input_df)
+
+        if not misclassified_df.empty:
+            show_misclassified_employees_ui(misclassified_df, input_df, file_path, periodic_workers)
+
+            main(skip_misclassified_check=True)
+            return  
+
+    save_to_excel_and_continue(input_df, periodic_workers, file_path)
 
     department_counts = input_df["부서.1"].value_counts()
     position_counts = input_df["직급"].value_counts()
@@ -836,7 +1009,7 @@ def main():
     grouped_counts = input_df.groupby(["부서.1", "직급"]).size()
     sub_department_counts = input_df["세부부서"].value_counts()
 
-    total_quota = 100 
+    total_quota = 100  
     departments = department_counts.index.tolist()
     positions = position_counts.index.tolist()
 

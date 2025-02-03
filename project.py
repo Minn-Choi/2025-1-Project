@@ -484,6 +484,7 @@ def create_excel_file(
 
     from openpyxl.styles import Border, Side
     
+    
     def calculate_dates(row):
         birth_date = row.get("생년월일")
         if pd.isna(birth_date):
@@ -799,7 +800,7 @@ def create_excel_file(
             fig = graphs[current_index[0]]
             file_name = f"graph_{current_index[0] + 1}.png"
             fig.savefig(file_name, bbox_inches="tight")
-            print(f"그래프가 저장되었습니다: {file_name}")
+            print(f"✅ 그래프가 저장되었습니다: {file_name}")
 
             button_frame = Frame(root, height=50, bg="lightgray")
             button_frame.pack(side="top", fill="x")

@@ -236,6 +236,10 @@ def preprocess_data(input_df):
 
     input_df = input_df[input_df["직종"] != "기간제근로자"]
 
+    input_df[["부서.1", "세부부서", "직급"]] = input_df[["부서.1", "세부부서", "직급"]].fillna(method="ffill")
+
+    input_df.fillna("", inplace=True)
+
     return input_df, periodic_workers
 
 
@@ -342,7 +346,8 @@ def show_misclassified_employees_ui(misclassified_df, input_df, original_file_pa
 
     Label(root, text="잘못 분류된 데이터를 수정하세요", font=("Arial", 14)).pack(pady=10)
 
-    tree = Treeview(root, columns=list(misclassified_df.columns), show="headings", height=15)
+    tree = Treeview(root, columns=list(misclassified_df.columns), show="headings", height=15, selectmode="extended")
+
     for col in misclassified_df.columns:
         tree.heading(col, text=col)
         tree.column(col, width=120, anchor="center")
@@ -364,30 +369,32 @@ def show_misclassified_employees_ui(misclassified_df, input_df, original_file_pa
     dropdown.grid(row=0, column=1, padx=5, pady=5)
 
     def apply_changes():
-        selected_item = tree.focus()
-        if not selected_item:
+        selected_items = tree.selection() 
+        if not selected_items:
             print("수정할 항목을 선택해주세요.")
-            return
-
-        values = tree.item(selected_item, "values")
-        if not values:
-            print("선택된 항목에 값이 없습니다.")
             return
 
         selected_value = selected_code.get()
         new_code, new_name = selected_value.split("(")[0], selected_value.split("(")[1][:-1]
 
-        name = values[1]  
-        if name in input_df["한글명"].values:
-            input_df.loc[input_df["한글명"] == name, "부서"] = new_code
-            input_df.loc[input_df["한글명"] == name, "세부부서"] = new_name
+        for item in selected_items:
+            values = tree.item(item, "values")
+            if not values:
+                continue
 
-            updated_values = list(values)
-            updated_values[2] = new_code 
-            updated_values[3] = new_name  
-            tree.item(selected_item, values=tuple(updated_values))
+            name = values[1]  
+            if name in input_df["한글명"].values:
+                input_df.loc[input_df["한글명"] == name, "부서"] = new_code
+                input_df.loc[input_df["한글명"] == name, "세부부서"] = new_name
 
-            print(f"'{name}'의 부서가 '{new_code}({new_name})'로 수정되었습니다.")
+                updated_values = list(values)
+                updated_values[2] = new_code  
+                updated_values[3] = new_name  
+                tree.item(item, values=tuple(updated_values))
+
+                print(f"'{name}'의 부서가 '{new_code}({new_name})'로 수정되었습니다.")
+
+        print(f"✅ {len(selected_items)}명의 부서가 변경되었습니다.")
 
     def on_done():
         try:
@@ -398,8 +405,6 @@ def show_misclassified_employees_ui(misclassified_df, input_df, original_file_pa
 
         except Exception as e:
             print(f"❌ 저장 후 재시작 중 오류 발생: {e}")
-
-
 
     Button(input_frame, text="수정 적용", command=apply_changes).grid(row=1, column=0, columnspan=2, pady=10)
     Button(root, text="수정 완료 및 저장", command=on_done).pack(side="left", padx=10, pady=10)
@@ -487,29 +492,38 @@ def create_excel_file(
     
     def calculate_dates(row):
         birth_date = row.get("생년월일")
-        if pd.isna(birth_date):
-            return None, None, None, None
 
-        birth_date = pd.to_datetime(birth_date)  
-        birth_year = birth_date.year
-        birth_month_day = birth_date.strftime("%m-%d") 
+        if pd.isna(birth_date) or birth_date is None:
+            return None, None, None, None  
 
-        if "01-01" <= birth_month_day <= "06-30":
-            retirement_date = f"{birth_year + 60}-06-30"
-            base_year = birth_year + 60
-            wage_peak_1 = f"{base_year - 3}-07-01"
-            wage_peak_2 = f"{base_year - 2}-07-01"
-            wage_peak_3 = f"{base_year - 1}-07-01"
-        elif "07-01" <= birth_month_day <= "12-31": 
-            retirement_date = f"{birth_year + 60}-12-31"
-            base_year = birth_year + 60
-            wage_peak_1 = f"{base_year - 2}-01-01"
-            wage_peak_2 = f"{base_year - 1}-01-01"
-            wage_peak_3 = f"{base_year}-01-01"
-        else:
-            return None, None, None, None
+        try:
+            birth_date = pd.to_datetime(birth_date, errors="coerce")  
+            if pd.isna(birth_date):
+                return None, None, None, None
 
-        return  wage_peak_1, wage_peak_2, wage_peak_3, retirement_date
+            birth_year = birth_date.year
+            birth_month_day = birth_date.strftime("%m-%d")  
+
+            if "01-01" <= birth_month_day <= "06-30":
+                retirement_date = f"{birth_year + 60}-06-30"
+                base_year = birth_year + 60
+                wage_peak_1 = f"{base_year - 3}-07-01"
+                wage_peak_2 = f"{base_year - 2}-07-01"
+                wage_peak_3 = f"{base_year - 1}-07-01"
+            elif "07-01" <= birth_month_day <= "12-31": 
+                retirement_date = f"{birth_year + 60}-12-31"
+                base_year = birth_year + 60
+                wage_peak_1 = f"{base_year - 2}-01-01"
+                wage_peak_2 = f"{base_year - 1}-01-01"
+                wage_peak_3 = f"{base_year}-01-01"
+            else:
+                return None, None, None, None
+
+            return wage_peak_1, wage_peak_2, wage_peak_3, retirement_date
+
+        except Exception as e:
+            print(f"⚠️ 생년월일 처리 오류: {e}")
+            return None, None, None, None  
 
     input_df[[ "임금피크(1)", "임금피크(2)", "임금피크(3)", "퇴직일자"]] = input_df.apply(
         lambda row: pd.Series(calculate_dates(row)), axis=1
@@ -536,6 +550,9 @@ def create_excel_file(
         cell.font = header_font
         cell.border = thin_border
 
+    from openpyxl.styles import Alignment
+    from openpyxl.utils import get_column_letter
+
     for row_idx, (_, row) in enumerate(filtered_df.iterrows(), start=2):  
         ws_all_employees.append([  
             row["한글명"], 
@@ -548,6 +565,21 @@ def create_excel_file(
             row["임금피크(3)"], 
             row["퇴직일자"]  
         ])
+
+    date_columns = [5, 6, 7, 8, 9] 
+
+    for col in date_columns:
+        col_letter = get_column_letter(col)
+        for row_idx in range(2, ws_all_employees.max_row + 1):
+            cell = ws_all_employees[f"{col_letter}{row_idx}"]
+            if cell.value: 
+                try:
+                    cell.value = pd.to_datetime(cell.value).date() 
+                    cell.number_format = "YYYY-MM-DD" 
+                except Exception as e:
+                    print(f"⚠️ 날짜 형식 변환 오류 (행 {row_idx}, 열 {col_letter}): {e}")
+
+    ws_all_employees.auto_filter.ref = f"A1:I{ws_all_employees.max_row}"
 
     for row in ws_all_employees.iter_rows(min_row=1, max_row=ws_all_employees.max_row, min_col=1, max_col=len(header)):
         for cell in row:
@@ -819,6 +851,7 @@ def create_excel_file(
             style.configure("Treeview", rowheight=25, font=("Arial", 10))
 
             df = pd.read_excel(excel_file)
+            df = df.fillna("")
 
             tree = Treeview(preview_window, columns=list(df.columns), show="headings", height=20)
 
@@ -834,7 +867,7 @@ def create_excel_file(
 
             for i, (_, row) in enumerate(df.iterrows()):
                 values = list(row)
-                tag = "default" 
+                tag = "default"  
 
                 if values[0] == "정원" or values[1] == "정원":
                     tag = "quota"
@@ -854,23 +887,67 @@ def create_excel_file(
             tree.pack(fill="both", expand=True)
 
             def show_name_list(event):
-                """선택된 인원에 대한 이름 목록 표시"""
-                selected_item = tree.focus()  
+                """선택된 부서/세부부서/직급 별 인원 목록 표시"""
+                selected_item = tree.focus()
                 selected_values = tree.item(selected_item, "values")
 
                 if not selected_values:
+                    print("⚠️ 선택된 항목에 값이 없습니다.")
                     return
 
-                selected_department = selected_values[0]  
-                selected_count = selected_values[1]  
+                selected_department = selected_values[0].strip() if len(selected_values) > 0 else ""
+                selected_sub_department = selected_values[1].strip() if len(selected_values) > 1 else ""
+                selected_position = selected_values[2].strip() if len(selected_values) > 2 else ""
 
-                name_list = input_df[input_df["부서.1"] == selected_department]["한글명"].tolist()
+                print(f"🟢 선택한 값: 부서 = '{selected_department}', 세부부서 = '{selected_sub_department}', 직급 = '{selected_position}'")
+
+                if selected_department == "":
+                    matched_row = input_df[input_df["세부부서"] == selected_sub_department]
+                    if not matched_row.empty:
+                        selected_department = matched_row.iloc[0]["부서.1"]
+
+                if selected_sub_department in ["정원", "현원", "과부족"]:
+                    print(f"⚠️ '{selected_sub_department}'은(는) 통계 행이므로 필터링 제외")
+                    return
+
+                input_df["부서.1"] = input_df["부서.1"].astype(str).str.strip().replace({"nan": "", "NaN": "", None: ""})
+                input_df["세부부서"] = input_df["세부부서"].astype(str).str.strip().replace({"nan": "", "NaN": "", None: ""})
+                input_df["직급"] = input_df["직급"].astype(str).str.strip().replace({"nan": "", "NaN": "", None: ""})
+
+                selected_department = selected_department.strip()
+                selected_sub_department = selected_sub_department.strip()
+                selected_position = selected_position.strip()
+
+                department_filtered_df = input_df.copy()
+
+                if selected_department in input_df["부서.1"].values:
+                    department_filtered_df = department_filtered_df[
+                        department_filtered_df["부서.1"] == selected_department
+                    ]
+
+                if selected_sub_department in input_df["세부부서"].values:
+                    department_filtered_df = department_filtered_df[
+                        department_filtered_df["세부부서"] == selected_sub_department
+                    ]
+
+                if selected_position in input_df["직급"].values:
+                    department_filtered_df = department_filtered_df[
+                        department_filtered_df["직급"] == selected_position
+                    ]
+
+                print(f"🔍 필터링된 데이터 개수: {len(department_filtered_df)}")
+
+                if department_filtered_df.empty:
+                    print(f"⚠️ '{selected_department} - {selected_sub_department} - {selected_position}'에 해당하는 데이터가 없습니다.")
+                    return
+
+                name_list = department_filtered_df["한글명"].tolist()
 
                 name_window = Toplevel(preview_window)
                 name_window.title(f"{selected_department} - 이름 목록")
                 name_window.geometry("400x300")
 
-                Label(name_window, text=f"{selected_department} - {selected_count}명", font=("Arial", 12)).pack(pady=10)
+                Label(name_window, text=f"{selected_department} {selected_sub_department} {selected_position} - {len(name_list)}명", font=("Arial", 12)).pack(pady=10)
 
                 name_listbox = Listbox(name_window)
                 for name in name_list:
@@ -878,8 +955,53 @@ def create_excel_file(
 
                 name_listbox.pack(fill="both", expand=True, padx=10, pady=10)
 
-            tree.bind("<Double-1>", show_name_list)
+                name_listbox.bind("<Double-1>", lambda event: show_employee_details(event, name_listbox))
 
+
+            def show_employee_details(event, listbox):
+                """선택된 직원의 상세 정보를 보여주는 함수"""
+                try:
+                    selected_index = listbox.curselection()
+                    if not selected_index:
+                        print("⚠️ 선택된 항목이 없습니다.")
+                        return
+
+                    selected_name = listbox.get(selected_index[0]).strip()
+
+                    employee_row = input_df[input_df["한글명"] == selected_name]
+
+                    if employee_row.empty:
+                        print(f"⚠️ '{selected_name}'에 대한 정보가 없습니다.")
+                        return
+
+                    employee_info = employee_row.iloc[0]
+
+                    details_window = Toplevel(listbox.master)
+                    details_window.title(f"{selected_name} 상세 정보")
+                    details_window.geometry("400x400")
+
+                    Label(details_window, text=f"이름: {employee_info['한글명']}", font=("Arial", 12, "bold")).pack(pady=5)
+                    Label(details_window, text=f"사원번호: {employee_info['사원번호']}", font=("Arial", 12)).pack(pady=5)
+                    Label(details_window, text=f"직급: {employee_info['직급']}", font=("Arial", 12)).pack(pady=5)
+                    Label(details_window, text=f"입사일: {employee_info['입사일']}", font=("Arial", 12)).pack(pady=5)
+                    Label(details_window, text=f"부서: {employee_info['세부부서']}", font=("Arial", 12)).pack(pady=5)
+                    Label(details_window, text=f"생년월일: {employee_info['생년월일']}", font=("Arial", 12)).pack(pady=5)
+
+                    if "임금피크(1)" in employee_info and not pd.isna(employee_info["임금피크(1)"]):
+                        Label(details_window, text=f"임금피크(1): {employee_info['임금피크(1)']}", font=("Arial", 12)).pack(pady=5)
+                    if "임금피크(2)" in employee_info and not pd.isna(employee_info["임금피크(2)"]):
+                        Label(details_window, text=f"임금피크(2): {employee_info['임금피크(2)']}", font=("Arial", 12)).pack(pady=5)
+                    if "임금피크(3)" in employee_info and not pd.isna(employee_info["임금피크(3)"]):
+                        Label(details_window, text=f"임금피크(3): {employee_info['임금피크(3)']}", font=("Arial", 12)).pack(pady=5)
+                    if "퇴직일자" in employee_info and not pd.isna(employee_info["퇴직일자"]):
+                        Label(details_window, text=f"퇴직일자: {employee_info['퇴직일자']}", font=("Arial", 12)).pack(pady=5)
+
+                    Button(details_window, text="닫기", command=details_window.destroy).pack(pady=10)
+
+                except Exception as e:
+                    print(f"⚠️ 직원 정보 창 표시 중 오류 발생: {e}")
+
+            tree.bind("<Double-1>", show_name_list)  
 
         button_frame = Frame(root, height=50, bg="lightgray")
         button_frame.pack(side="top", fill="x")
@@ -967,7 +1089,6 @@ def create_excel_file(
                 if cell.row == 1:
                     cell.font = Font(bold=True)
                     cell.fill = PatternFill(start_color="FFFFCC", end_color="FFFFCC", fill_type="solid")
-
     file_name = f"정원_현황_{datetime.datetime.now().strftime('%Y%m%d_%H%M')}.xlsx"
     wb.save(file_name)
     print(f"✅ 엑셀 파일이 생성되었습니다: {file_name}")

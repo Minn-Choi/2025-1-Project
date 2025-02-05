@@ -242,8 +242,6 @@ def preprocess_data(input_df):
 
     return input_df, periodic_workers
 
-
-
 def save_to_excel_and_continue(input_df, periodic_workers, original_file_path):
     try:
         if original_file_path.endswith(".xls"):
@@ -296,7 +294,7 @@ def detect_misclassified_employees(input_df):
     if missing_columns:
         print(f"다음 열이 누락되었습니다: {missing_columns}")
         return pd.DataFrame()
-    return misclassified_df[columns_to_display]
+    return misclassified_df[columns_to_display] 
 
 def show_misclassified_employees_ui(misclassified_df, input_df, original_file_path, periodic_workers):
     if misclassified_df.empty:
@@ -525,14 +523,14 @@ def create_excel_file(
             print(f"⚠️ 생년월일 처리 오류: {e}")
             return None, None, None, None  
 
-    input_df[[ "임금피크(1)", "임금피크(2)", "임금피크(3)", "퇴직일자"]] = input_df.apply(
+    input_df[[ "임금피크(1)", "임금피크(2)", "임금피크(3)", "정년"]] = input_df.apply(
         lambda row: pd.Series(calculate_dates(row)), axis=1
     )
 
     filtered_df = input_df[input_df["생년월일"].notna()]
 
-    ws_all_employees = wb.create_sheet(title="퇴직 및 임금피크")
-    header = ["이름", "직급", "입사일", "부서", "생년월일", "임금피크(1)", "임금피크(2)", "임금피크(3)", "퇴직일자"]
+    ws_all_employees = wb.create_sheet(title="정년 및 임금피크")
+    header = ["이름", "직급", "입사일", "부서", "생년월일", "임금피크(1)", "임금피크(2)", "임금피크(3)", "정년"]
     ws_all_employees.append(header)
 
     header_fill = PatternFill(start_color="FFFFCC", end_color="FFFFCC", fill_type="solid")  
@@ -563,7 +561,7 @@ def create_excel_file(
             row["임금피크(1)"], 
             row["임금피크(2)"], 
             row["임금피크(3)"], 
-            row["퇴직일자"]  
+            row["정년"]  
         ])
 
     date_columns = [5, 6, 7, 8, 9] 
@@ -673,7 +671,7 @@ def create_excel_file(
             top=Side(style="thin"), bottom=Side(style="thin")
         )
 
-    current_row = ws_main.max_row + 1 
+    current_row = ws_main.max_row + 1
 
     max_col = ws_main.max_column  
     if max_col > 0: 
@@ -956,8 +954,6 @@ def create_excel_file(
                 name_listbox.pack(fill="both", expand=True, padx=10, pady=10)
 
                 name_listbox.bind("<Double-1>", lambda event: show_employee_details(event, name_listbox))
-
-
             def show_employee_details(event, listbox):
                 """선택된 직원의 상세 정보를 보여주는 함수"""
                 try:
@@ -993,8 +989,8 @@ def create_excel_file(
                         Label(details_window, text=f"임금피크(2): {employee_info['임금피크(2)']}", font=("Arial", 12)).pack(pady=5)
                     if "임금피크(3)" in employee_info and not pd.isna(employee_info["임금피크(3)"]):
                         Label(details_window, text=f"임금피크(3): {employee_info['임금피크(3)']}", font=("Arial", 12)).pack(pady=5)
-                    if "퇴직일자" in employee_info and not pd.isna(employee_info["퇴직일자"]):
-                        Label(details_window, text=f"퇴직일자: {employee_info['퇴직일자']}", font=("Arial", 12)).pack(pady=5)
+                    if "정년" in employee_info and not pd.isna(employee_info["정년"]):
+                        Label(details_window, text=f"정년: {employee_info['정년']}", font=("Arial", 12)).pack(pady=5)
 
                     Button(details_window, text="닫기", command=details_window.destroy).pack(pady=10)
 

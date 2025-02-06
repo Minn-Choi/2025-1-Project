@@ -25,7 +25,6 @@ def select_file():
     )
     return file_path
 
-
 def get_sorting_order(departments, positions):
     """정렬 순서를 선택하거나 사용자 지정으로 입력받는 함수"""
     root = Toplevel()
@@ -36,7 +35,7 @@ def get_sorting_order(departments, positions):
     positions = ["임원", "2급", "3급","4급","5급","6급","7급","시설안내원","주차관리원","지도직","환경관리","비서","사무보조"] 
 
     use_custom_order = BooleanVar()
-    use_custom_order.set(False)
+    use_custom_order.set(True)
 
     Label(root, text="정렬 방식을 선택하세요", font=("Arial", 14)).pack(pady=10)
     Checkbutton(root, text="사용자 지정 정렬", variable=use_custom_order).pack()
@@ -207,6 +206,7 @@ def preprocess_data(input_df):
         "8400": "안전감사실_부장",
         "8401": "청렴감사팀",
         "8402": "안전보건팀",
+        "8500": "임원",
         "8600": "주차사업부_부장",
         "8601": "주차사업1팀",
         "8602": "주차사업2팀",
@@ -321,6 +321,7 @@ def show_misclassified_employees_ui(misclassified_df, input_df, original_file_pa
         "8400": "안전감사실_부장",
         "8401": "청렴감사팀",
         "8402": "안전보건팀",
+        "8500": "임원",
         "8600": "주차사업부_부장",
         "8601": "주차사업1팀",
         "8602": "주차사업2팀",
@@ -794,8 +795,8 @@ def create_excel_file(
     def show_graph_and_preview_interface(graphs, excel_file):
         """그래프와 엑셀 미리보기 인터페이스"""
         root = Toplevel()
-        root.title("그래프 및 엑셀 미리보기")
-        root.geometry("1400x800")
+        root.title("그래프 및 인원 상세보기")
+        root.geometry("1400x1000")
 
         def on_close():
             root.destroy()
@@ -841,7 +842,7 @@ def create_excel_file(
         def preview_excel():
             """엑셀 내용을 미리보기로 표시"""
             preview_window = Toplevel(root)
-            preview_window.title("엑셀 미리보기")
+            preview_window.title("인원 상세 정보")
             preview_window.geometry("800x600")
 
             style = Style(preview_window)
@@ -1000,12 +1001,12 @@ def create_excel_file(
             tree.bind("<Double-1>", show_name_list)  
 
         button_frame = Frame(root, height=50, bg="lightgray")
-        button_frame.pack(side="top", fill="x")
+        button_frame.pack(side="top", fill="both", expand=True)
 
         Button(button_frame, text="이전 그래프", command=prev_graph, height=2, width=15).pack(side="left", padx=10, pady=5)
         Button(button_frame, text="다음 그래프", command=next_graph, height=2, width=15).pack(side="left", padx=10, pady=5)
         Button(button_frame, text="그래프 저장", command=save_graph, height=2, width=15).pack(side="left", padx=10, pady=5)
-        Button(button_frame, text="엑셀 미리보기", command=preview_excel, height=2, width=15).pack(side="right", padx=10, pady=5)
+        Button(button_frame, text="부서 별 인원 상세보기", command=preview_excel, height=2, width=19).pack(side="right", padx=10, pady=5)
 
         update_canvas()
         root.mainloop()

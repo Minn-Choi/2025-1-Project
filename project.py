@@ -2,15 +2,13 @@ import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import PatternFill, Alignment, Font, Border, Side
 from tkinter import Tk, Toplevel, ttk, Label, Entry, Button, filedialog, Checkbutton, BooleanVar, Listbox, END, Frame, StringVar
-from openpyxl.chart import BarChart, Reference
 import datetime
 import matplotlib.pyplot as plt
-import matplotlib.font_manager as fm
 from openpyxl.utils import get_column_letter
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import sys
-from tkinter import Toplevel, Button, Canvas
-from tkinter.ttk import Treeview, Scrollbar
+from tkinter import Toplevel, Button
+from tkinter.ttk import Treeview, Scrollbar, Style
 
 plt.rc('font', family='Malgun Gothic')  
 plt.rcParams['axes.unicode_minus'] = False 
@@ -360,7 +358,7 @@ def show_misclassified_employees_ui(misclassified_df, input_df, original_file_pa
     input_frame.pack(pady=10)
 
     selected_code = StringVar()
-    selected_code.set("8100") 
+    selected_code.set("8100")
 
     Label(input_frame, text="새로운 부서 선택").grid(row=0, column=0, padx=5, pady=5)
     dropdown = ttk.Combobox(input_frame, textvariable=selected_code, state="readonly", width=25)
@@ -485,9 +483,6 @@ def create_excel_file(
     wb = Workbook()
     ws_main = wb.active
     ws_main.title = "정원 및 현황"
-
-    from openpyxl.styles import Border, Side
-    
     
     def calculate_dates(row):
         birth_date = row.get("생년월일")
@@ -548,9 +543,6 @@ def create_excel_file(
         cell.fill = header_fill
         cell.font = header_font
         cell.border = thin_border
-
-    from openpyxl.styles import Alignment
-    from openpyxl.utils import get_column_letter
 
     for row_idx, (_, row) in enumerate(filtered_df.iterrows(), start=2):  
         ws_all_employees.append([  
@@ -835,9 +827,6 @@ def create_excel_file(
 
             button_frame = Frame(root, height=50, bg="lightgray")
             button_frame.pack(side="top", fill="x")
-
-
-        from tkinter.ttk import Treeview, Scrollbar, Style
         
         def preview_excel():
             """엑셀 내용을 미리보기로 표시"""
